@@ -75,7 +75,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Define o caminho do executável do Chromium para o Puppeteer.
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 # Muda o proprietário dos arquivos para o usuário 'node' por segurança.
 USER root
