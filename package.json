@@ -1,7 +1,7 @@
 {
   "name": "scraping-microservice",
   "version": "1.0.0",
-  "description": "A simple scraping microservice using Puppeteer and Express.",
+  "description": "A simple scraping microservice using Puppeteer, Express, ScraperAPI and Cheerio.",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -13,6 +13,10 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.19.2",
-    "puppeteer": "^22.13.0"
+    "puppeteer": "^22.13.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "axios": "^1.7.2",
+    "cheerio": "^1.0.0-rc.12"
   }
 }
