@@ -1,12 +1,12 @@
 import express from 'express';
 import axios from 'axios';
-import cheerio from 'cheerio';
+import { load } from 'cheerio';
 import cors from 'cors';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-const SCRAPER_API_KEY = 'd86f689a4e978c7cc0a76f9705bc42fd'; // Troque para variável de ambiente no futuro
+const SCRAPER_API_KEY = 'd86f689a4e978c7cc0a76f9705bc42fd'; // Ideal: troque para variável de ambiente!
 
 app.use(cors());
 app.use(express.json());
@@ -21,11 +21,11 @@ app.get('/', (req, res) => {
     res.send('Scraping microservice running. Use POST /api/scrape endpoint.');
 });
 
-// Scraping via ScraperAPI + cheerio
+// Scraping via ScraperAPI + cheerio (AJAX/HTML)
 async function scrapeViaHttp(searchUrl, productLinkSelector, productPriceSelector) {
     const requestUrl = `https://api.scraperapi.com/?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(searchUrl)}`;
     const response = await axios.get(requestUrl, { timeout: 45000 });
-    const $ = cheerio.load(response.data);
+    const $ = load(response.data);
     const productUrl = $(productLinkSelector).attr('href');
     if (!productUrl) {
         return { status: 'not_found', productUrl: searchUrl, message: 'Link do produto não encontrado na busca.' };
@@ -39,7 +39,7 @@ async function scrapeViaHttp(searchUrl, productLinkSelector, productPriceSelecto
             return { status: 'success', productUrl, price, attempts: 1, message: 'Preço encontrado na busca.' };
         }
     }
-    // Se não encontrou, prepare para fallback (página do produto)
+    // Se não encontrou, prepara para fallback (abrir página do produto)
     return { status: 'found', productUrl: productUrl.startsWith('http') ? productUrl : new URL(productUrl, searchUrl).toString() };
 }
 
@@ -75,7 +75,7 @@ app.post('/api/scrape', async (req, res) => {
             const productPageUrl = result.productUrl;
             const productRequestUrl = `https://api.scraperapi.com/?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(productPageUrl)}`;
             const pageResponse = await axios.get(productRequestUrl, { timeout: 45000 });
-            const $ = cheerio.load(pageResponse.data);
+            const $ = load(pageResponse.data);
             const priceStr = $(productPriceSelector).text();
             if (priceStr) {
                 const price = parsePrice(priceStr);
