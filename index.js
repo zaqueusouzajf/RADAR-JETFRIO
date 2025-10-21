@@ -133,7 +133,3 @@ app.post('/api/scrape', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`🚀 Scraper service (axios-cheerio) is running on port ${PORT}`);
 });
-
-app.listen(PORT, () => {
-    console.log(`🚀 Scraper service (axios-cheerio) is running on port ${PORT}`);
-});
