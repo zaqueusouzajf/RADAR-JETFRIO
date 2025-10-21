@@ -32,8 +32,8 @@ app.post('/api/scrape', async (req, res) => {
     let browser = null;
     try {
         browser = await puppeteer.launch({
+            // O seu Dockerfile cuida do caminho do executável, então podemos remover o `executablePath`
             headless: 'new',
-            executablePath: '/usr/bin/google-chrome-stable', // Caminho no Docker
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -53,7 +53,7 @@ app.post('/api/scrape', async (req, res) => {
         });
 
         await page.setExtraHTTPHeaders({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.51 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
         });
 
         await page.goto(finalSearchUrl, { waitUntil: 'networkidle2', timeout: 120000 });
