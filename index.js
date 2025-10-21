@@ -1,123 +1,143 @@
 import express from 'express';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import axios from 'axios';
-import { load } from 'cheerio';
-import cors from 'cors';
+import cheerio from 'cheerio';
+
+// Aplica o plugin Stealth para tornar o Puppeteer menos detectável
+puppeteer.use(StealthPlugin());
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+app.use(express.json({ limit: '10mb' }));
 
-const SCRAPER_API_KEY = 'd86f689a4e978c7cc0a76f9705bc42fd'; // Ideal: troque para variável de ambiente!
+const PORT = process.env.PORT || 10000;
 
-app.use(cors());
-app.use(express.json());
-
-const parsePrice = (priceStr) => {
-    if (!priceStr) return null;
-    const cleanedPrice = parseFloat(priceStr.replace(/[^\d,.]/g, '').replace(/\./g, '').replace(',', '.'));
-    return isNaN(cleanedPrice) ? null : cleanedPrice;
-};
-
-app.get('/', (req, res) => {
-    res.send('Scraping microservice running. Use POST /api/scrape endpoint.');
-});
-
-// Scraping via ScraperAPI + cheerio (AJAX/HTML)
-async function scrapeViaHttp(searchUrl, productLinkSelector, productPriceSelector) {
-    const requestUrl = `https://api.scraperapi.com/?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(searchUrl)}`;
-    const response = await axios.get(requestUrl, { timeout: 45000 });
-    const $ = load(response.data);
-    const productUrl = $(productLinkSelector).attr('href');
-    if (!productUrl) {
-        return { status: 'not_found', productUrl: searchUrl, message: 'Link do produto não encontrado na busca.' };
-    }
-
-    // Busca preço na própria página de lista (se disponível)
-    let priceStr = $(productPriceSelector).text();
-    if (priceStr) {
-        const price = parsePrice(priceStr);
-        if (price !== null) {
-            return { status: 'success', productUrl, price, attempts: 1, message: 'Preço encontrado na busca.' };
-        }
-    }
-    // Se não encontrou, prepara para fallback (abrir página do produto)
-    return { status: 'found', productUrl: productUrl.startsWith('http') ? productUrl : new URL(productUrl, searchUrl).toString() };
-}
+// Função de delay para humanizar o scraping
+const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
 app.post('/api/scrape', async (req, res) => {
-    const { searchTerm, secondarySearchTerm, searchUrl, productLinkSelector, productPriceSelector } = req.body;
+    const {
+        searchTerm,
+        secondarySearchTerm,
+        searchUrl,
+        productLinkSelector,
+        productPriceSelector,
+        scraperApiKey, // Chave da ScraperAPI recebida
+    } = req.body;
 
-    if (!searchTerm || !searchUrl || !productLinkSelector || !productPriceSelector) {
-        return res.status(400).json({ error: 'Campos obrigatórios ausentes: searchTerm, searchUrl, productLinkSelector, productPriceSelector.' });
+    if (!searchUrl || !productLinkSelector || !productPriceSelector) {
+        return res.status(400).json({ status: 'error', message: 'Parâmetros essenciais ausentes.' });
     }
 
-    let result;
-    let attempts = 1;
+    const primaryTerm = secondarySearchTerm || searchTerm;
+    if (!primaryTerm) {
+        return res.status(400).json({ status: 'error', message: 'Nenhum termo de busca fornecido.' });
+    }
 
-    // 1ª tentativa: busca principal
-    let urlBusca = searchUrl.replace('${produtoBusca}', encodeURIComponent(searchTerm));
+    const finalSearchUrl = searchUrl.replace('${produtoBusca}', encodeURIComponent(primaryTerm))
+                                     .replace('${codigoFabricante}', encodeURIComponent(primaryTerm));
+
     try {
-        result = await scrapeViaHttp(urlBusca, productLinkSelector, productPriceSelector);
-        if (result.status === 'not_found' && secondarySearchTerm) {
-            // Fallback: buscar usando código fabricante
-            attempts++;
-            urlBusca = searchUrl.replace('${produtoBusca}', encodeURIComponent(secondarySearchTerm));
-            result = await scrapeViaHttp(urlBusca, productLinkSelector, productPriceSelector);
-        }
+        const scraperApiUrl = `http://api.scraperapi.com?api_key=${scraperApiKey}&url=${encodeURIComponent(finalSearchUrl)}`;
 
-        // Se sucesso direto na lista
-        if (result.status === 'success') {
-            result.attempts = attempts;
-            return res.status(200).json(result);
-        }
+        const response = await axios.get(scraperApiUrl, { timeout: 120000 });
 
-        // Se precisa entrar na página do produto para pegar o preço
-        if (result.status === 'found' && result.productUrl) {
-            const productPageUrl = result.productUrl;
-            const productRequestUrl = `https://api.scraperapi.com/?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(productPageUrl)}`;
-            const pageResponse = await axios.get(productRequestUrl, { timeout: 45000 });
-            const $ = load(pageResponse.data);
-            const priceStr = $(productPriceSelector).text();
-            if (priceStr) {
-                const price = parsePrice(priceStr);
-                if (price !== null) {
-                    return res.status(200).json({
-                        status: 'success',
-                        productUrl: productPageUrl,
-                        price,
-                        attempts,
-                        message: 'Preço extraído da página do produto.'
-                    });
-                }
-            }
+        if (response.status !== 200) {
             return res.status(200).json({
-                status: 'price_not_found',
-                message: 'Preço não encontrado na página do produto.',
-                productUrl: productPageUrl,
+                status: 'error',
+                message: `Falha ao buscar a página de busca. Status: ${response.status}`,
                 price: null,
-                attempts
+                productUrl: finalSearchUrl,
+                html: response.data,
             });
         }
-        // Se não achou nada
+        
+        const html = response.data;
+        const $ = cheerio.load(html);
+
+        if (html.toLowerCase().includes('captcha') || html.toLowerCase().includes('challenge')) {
+            return res.status(200).json({
+                status: 'blocked',
+                message: 'Acesso bloqueado por CAPTCHA na página de busca.',
+                price: null,
+                productUrl: finalSearchUrl,
+                html: html,
+            });
+        }
+
+        const productLink = $(productLinkSelector).first().attr('href');
+
+        if (!productLink) {
+            return res.status(200).json({
+                status: 'not_found',
+                message: 'Seletor de link do produto não encontrou correspondência.',
+                price: null,
+                productUrl: finalSearchUrl,
+                html: html, // Retorna o HTML para diagnóstico
+            });
+        }
+
+        const absoluteProductUrl = new URL(productLink, finalSearchUrl).toString();
+        const productPageScraperApiUrl = `http://api.scraperapi.com?api_key=${scraperApiKey}&url=${encodeURIComponent(absoluteProductUrl)}`;
+        
+        const productPageResponse = await axios.get(productPageScraperApiUrl, { timeout: 120000 });
+        
+        const productHtml = productPageResponse.data;
+        const $$ = cheerio.load(productHtml);
+
+        let priceText = $$(productPriceSelector).first().text().trim();
+        
+        if (!priceText) {
+             return res.status(200).json({
+                status: 'price_not_found',
+                message: 'Seletor de preço não encontrou correspondência na página do produto.',
+                price: null,
+                productUrl: absoluteProductUrl,
+                html: productHtml, // Retorna o HTML para diagnóstico
+            });
+        }
+
+        const price = parseFloat(priceText.replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
+
+        if (isNaN(price)) {
+             return res.status(200).json({
+                status: 'price_not_found',
+                message: `Não foi possível converter o preço extraído ('${priceText}') para um número.`,
+                price: null,
+                productUrl: absoluteProductUrl,
+                html: productHtml,
+            });
+        }
+
         return res.status(200).json({
-            status: result.status,
-            message: result.message,
-            productUrl: result.productUrl,
-            price: null,
-            attempts
+            status: 'success',
+            message: 'Preço extraído com sucesso.',
+            price: price,
+            productUrl: absoluteProductUrl,
+            html: null,
         });
 
     } catch (error) {
-        console.error('Scraping Error:', error);
+        console.error('Erro durante o processo de scraping:', error.message);
+        let errorMessage = 'Erro desconhecido durante o scraping.';
+        if (error.response) {
+            errorMessage = `Erro do servidor de scraping: ${error.response.status} - ${error.response.statusText}`;
+        } else if (error.request) {
+            errorMessage = 'Nenhuma resposta recebida do serviço de scraping (possível timeout).';
+        } else {
+            errorMessage = error.message;
+        }
+
         return res.status(500).json({
             status: 'error',
-            message: error.message,
-            productUrl: null,
+            message: errorMessage,
             price: null,
-            attempts
+            productUrl: finalSearchUrl,
+            html: error.response?.data || null
         });
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });
