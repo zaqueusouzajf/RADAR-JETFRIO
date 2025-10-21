@@ -1,22 +1,23 @@
 {
-  "name": "scraping-microservice",
+  "name": "radar-jetfrio-scraper",
   "version": "1.0.0",
-  "description": "A simple scraping microservice using Puppeteer, Express, ScraperAPI and Cheerio.",
+  "description": "Serviço de scraping para o Radar Jetfrio",
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  },
+  "keywords": [
+    "scraper",
+    "axios",
+    "cheerio"
+  ],
+  "author": "zaqueusouzajf",
+  "license": "ISC",
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.19.2",
-    "puppeteer": "^22.13.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "axios": "^1.7.2",
-    "cheerio": "^1.0.0-rc.12"
+    "cheerio": "^1.0.0-rc.12",
+    "express": "^4.19.2"
   }
 }
